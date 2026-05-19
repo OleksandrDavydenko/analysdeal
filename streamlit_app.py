@@ -24,61 +24,59 @@ st.set_page_config(page_title='Аналіз угод', layout='wide')
 
 def check_password() -> bool:
     """Авторизація — пароль зі st.secrets['password']."""
-    def password_entered():
-        if hmac.compare_digest(str(st.session_state.get('password', '')),
-                               str(st.secrets['password'])):
-            st.session_state['password_correct'] = True
-            del st.session_state['password']
-        else:
-            st.session_state['password_correct'] = False
-
     if st.session_state.get('password_correct'):
         return True
 
-    st.markdown(
-        """
-        <style>
-        [data-testid="stToolbar"] { display: none; }
-        section.main > div.block-container { padding-top: 5rem; }
-        div[data-testid="stForm"] {
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 16px;
-            padding: 1.6rem 1.6rem 1.2rem;
-            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-        }
-        div[data-testid="stForm"] button[kind="primary"] {
-            width: 100%;
-            border-radius: 10px;
-            padding: 0.55rem 0;
-            font-weight: 600;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    _, mid, _ = st.columns([1, 2, 1])
-    with mid:
+    placeholder = st.empty()
+    with placeholder.container():
         st.markdown(
-            "<div style='text-align:center; font-size:2.2rem;'>🔒</div>"
-            "<h2 style='text-align:center; margin:0 0 0.25rem;'>Доступ до звіту</h2>"
-            "<p style='text-align:center; color:#64748b; margin:0 0 1rem;'>"
-            "Введіть пароль для перегляду аналізу угод</p>",
+            """
+            <style>
+            [data-testid="stToolbar"] { display: none; }
+            section.main > div.block-container { padding-top: 5rem; }
+            div[data-testid="stForm"] {
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 16px;
+                padding: 1.6rem 1.6rem 1.2rem;
+                box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+            }
+            div[data-testid="stForm"] button[kind="primary"] {
+                width: 100%;
+                border-radius: 10px;
+                padding: 0.55rem 0;
+                font-weight: 600;
+            }
+            </style>
+            """,
             unsafe_allow_html=True,
         )
 
-        with st.form('login_form', clear_on_submit=False):
-            st.text_input('Пароль', type='password',
-                          key='password', placeholder='Введіть пароль')
-            submitted = st.form_submit_button('Увійти', type='primary',
-                                              use_container_width=True)
-            if submitted:
-                password_entered()
-                st.rerun()
+        _, mid, _ = st.columns([1, 2, 1])
+        with mid:
+            st.markdown(
+                "<div style='text-align:center; font-size:2.2rem;'>🔒</div>"
+                "<h2 style='text-align:center; margin:0 0 0.25rem;'>Доступ до звіту</h2>"
+                "<p style='text-align:center; color:#64748b; margin:0 0 1rem;'>"
+                "Введіть пароль для перегляду аналізу угод</p>",
+                unsafe_allow_html=True,
+            )
 
-        if st.session_state.get('password_correct') is False:
-            st.error('Невірний пароль')
+            with st.form('login_form', clear_on_submit=False):
+                pwd = st.text_input('Пароль', type='password',
+                                    placeholder='Введіть пароль')
+                submitted = st.form_submit_button('Увійти', type='primary',
+                                                  use_container_width=True)
+
+            if submitted:
+                if hmac.compare_digest(str(pwd), str(st.secrets['password'])):
+                    st.session_state['password_correct'] = True
+                    placeholder.empty()
+                    return True
+                st.session_state['password_correct'] = False
+
+            if st.session_state.get('password_correct') is False:
+                st.error('Невірний пароль')
 
     return False
 
@@ -142,6 +140,11 @@ def date_filter(df_src: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
 
 with tab1:
     st.subheader('Повний датасет із result.csv')
+    st.info(
+        'Усі угоди, до яких прив\'язано **більше одного неінформативного рахунку** '
+        '(не позначені на видалення). Кожен рядок — пара "угода ↔ рахунок". '
+        'Колонка `КолвоСчетов` показує, скільки всього рахунків у відповідної угоди.'
+    )
     df_tab1 = date_filter(df, 'tab1')
     st.caption(f'Рядків після фільтра: {len(df_tab1)} · унікальних угод: {df_tab1["НомерУгоди"].nunique()}')
     st.dataframe(df_tab1, use_container_width=True, height=600)
@@ -154,6 +157,10 @@ with tab1:
     )
 
     st.subheader('ТОП-20 угод за кількістю рахунків')
+    st.info(
+        '20 угод, до яких прив\'язано найбільше рахунків — '
+        'допомагає швидко знайти "лідерів" за дублюванням рахунків.'
+    )
     top = (df_tab1[['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов']]
              .drop_duplicates()
              .sort_values('КолвоСчетов', ascending=False)
@@ -169,6 +176,11 @@ with tab1:
 
 with tab2:
     st.subheader('Угоди, де рахунки виставлені в різні місяці')
+    st.info(
+        'Підмножина угод з tab 1, у яких рахунки потрапляють у **більше одного місяця** '
+        '(перевірка по `ДатаСчета`). Це сигнал про потенційне дроблення оплати на періоди — '
+        'варто перевіряти причину.'
+    )
     df_tab2 = date_filter(df, 'tab2')
 
     угоди_разные_месяцы = (
@@ -199,6 +211,12 @@ with tab2:
 
 with tab3:
     st.subheader('Угоди з різними місяцями рахунків з 2026-01-01')
+    st.info(
+        'Зведення по угоді: одна угода — один рядок. Враховуються тільки угоди з '
+        '`ДатаУгоди >= 2026-01-01`, у яких рахунки розкидані по різних місяцях. '
+        'Колонка `КолвоСчетов` — кількість рахунків, `КолвоМесяцев` — у скількох різних '
+        'місяцях вони знаходяться.'
+    )
 
     df_diff = st.session_state.get('df_diff')
     if df_diff is None:
