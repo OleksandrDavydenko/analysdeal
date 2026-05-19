@@ -106,6 +106,7 @@ def load_data(path: str = 'result.csv') -> pd.DataFrame:
                                  format='%Y-%m-%d %H:%M:%S',
                                  errors='coerce')
     df['МесяцСчета'] = df['ДатаСчета'].dt.to_period('M').astype(str)
+    df = df.drop(columns=['Сумма'], errors='ignore')
     return df
 
 
@@ -118,9 +119,9 @@ c3.metric('Діапазон дат угод',
           f"{df['ДатаУгоди'].min():%Y-%m-%d} … {df['ДатаУгоди'].max():%Y-%m-%d}")
 
 tab1, tab2, tab3 = st.tabs([
-    'Повний датасет',
-    'Різні місяці рахунків',
-    'Різні місяці рахунків Угоди з 2026 року',
+    'Повний датасет де рахунків >1',
+    'Різні місяці в рахунках',
+    'Різні місяці в рахунках з 2026 року',
 ])
 
 with tab1:
@@ -135,8 +136,8 @@ with tab1:
     )
 
     st.subheader('ТОП-20 угод за кількістю рахунків')
-    top = (df.groupby(['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов'], as_index=False)
-             .agg(СуммаПоСчетам=('Сумма', 'sum'))
+    top = (df[['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов']]
+             .drop_duplicates()
              .sort_values('КолвоСчетов', ascending=False)
              .head(20))
     st.dataframe(top, use_container_width=True)
@@ -195,8 +196,7 @@ with tab3:
         df_diff[df_diff['ДатаУгоди'] >= '2026-01-01']
           .groupby(['НомерУгоди', 'ДатаУгоди'], as_index=False)
           .agg(КолвоСчетов=('НомерСчета', 'count'),
-               КолвоМесяцев=('МесяцСчета', 'nunique'),
-               СуммаПоСчетам=('Сумма', 'sum'))
+               КолвоМесяцев=('МесяцСчета', 'nunique'))
           .sort_values('ДатаУгоди')
     )
 
