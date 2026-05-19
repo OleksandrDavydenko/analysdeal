@@ -1,7 +1,23 @@
 import hmac
+from io import BytesIO
 
 import pandas as pd
 import streamlit as st
+
+
+def to_xlsx_bytes(df: pd.DataFrame, sheet_name: str = 'Sheet1') -> bytes:
+    """Конвертує DataFrame у байти xlsx."""
+    buf = BytesIO()
+    df_out = df.copy()
+    # tz-aware datetime — Excel не вміє, прибираємо tz якщо є
+    for col in df_out.select_dtypes(include=['datetimetz']).columns:
+        df_out[col] = df_out[col].dt.tz_localize(None)
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df_out.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    return buf.getvalue()
+
+
+XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 st.set_page_config(page_title='Аналіз сделок', layout='wide')
 
@@ -22,48 +38,21 @@ def check_password() -> bool:
     st.markdown(
         """
         <style>
-        [data-testid="stHeader"], [data-testid="stToolbar"] { display: none; }
-        .block-container { padding-top: 4rem; max-width: 460px; }
-        .login-card {
-            background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
-            border: 1px solid rgba(0,0,0,0.06);
-            border-radius: 18px;
-            padding: 2.2rem 2rem 1.6rem;
-            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
-            margin-top: 2rem;
+        [data-testid="stToolbar"] { display: none; }
+        section.main > div.block-container { padding-top: 5rem; }
+        div[data-testid="stForm"] {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 1.6rem 1.6rem 1.2rem;
+            box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
         }
-        .login-icon {
-            font-size: 2.4rem;
-            text-align: center;
-            margin-bottom: 0.4rem;
-        }
-        .login-title {
-            text-align: center;
-            font-size: 1.45rem;
-            font-weight: 700;
-            color: #0f172a;
-            margin: 0;
-        }
-        .login-sub {
-            text-align: center;
-            color: #64748b;
-            font-size: 0.92rem;
-            margin: 0.3rem 0 1.4rem;
-        }
-        .stTextInput > div > div > input {
-            border-radius: 10px !important;
-            padding: 0.65rem 0.9rem !important;
-        }
-        .stButton > button {
+        div[data-testid="stForm"] button[kind="primary"] {
             width: 100%;
             border-radius: 10px;
             padding: 0.55rem 0;
-            background: #2563eb;
-            color: white;
-            border: none;
             font-weight: 600;
         }
-        .stButton > button:hover { background: #1d4ed8; color: white; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -71,25 +60,25 @@ def check_password() -> bool:
 
     _, mid, _ = st.columns([1, 2, 1])
     with mid:
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        st.markdown('<div class="login-icon">🔒</div>', unsafe_allow_html=True)
-        st.markdown('<p class="login-title">Доступ до звіту</p>',
-                    unsafe_allow_html=True)
-        st.markdown('<p class="login-sub">Введіть пароль для перегляду аналізу сделок</p>',
-                    unsafe_allow_html=True)
+        st.markdown(
+            "<div style='text-align:center; font-size:2.2rem;'>🔒</div>"
+            "<h2 style='text-align:center; margin:0 0 0.25rem;'>Доступ до звіту</h2>"
+            "<p style='text-align:center; color:#64748b; margin:0 0 1rem;'>"
+            "Введіть пароль для перегляду аналізу сделок</p>",
+            unsafe_allow_html=True,
+        )
 
         with st.form('login_form', clear_on_submit=False):
             st.text_input('Пароль', type='password',
-                          key='password', label_visibility='collapsed',
-                          placeholder='Пароль')
-            submitted = st.form_submit_button('Увійти')
+                          key='password', placeholder='Введіть пароль')
+            submitted = st.form_submit_button('Увійти', type='primary',
+                                              use_container_width=True)
             if submitted:
                 password_entered()
                 st.rerun()
 
         if st.session_state.get('password_correct') is False:
             st.error('Невірний пароль')
-        st.markdown('</div>', unsafe_allow_html=True)
 
     return False
 
@@ -135,6 +124,13 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.subheader('Повний датасет із result.csv')
     st.dataframe(df, use_container_width=True, height=600)
+    st.download_button(
+        '⬇️ Завантажити XLSX (повний датасет)',
+        data=to_xlsx_bytes(df, 'Повний датасет'),
+        file_name='повний_датасет.xlsx',
+        mime=XLSX_MIME,
+        key='dl_full',
+    )
 
     st.subheader('ТОП-20 сделок за кількістю рахунків')
     top = (df.groupby(['НомерСделки', 'ДатаСделки', 'КолвоСчетов'], as_index=False)
@@ -142,6 +138,13 @@ with tab1:
              .sort_values('КолвоСчетов', ascending=False)
              .head(20))
     st.dataframe(top, use_container_width=True)
+    st.download_button(
+        '⬇️ Завантажити XLSX (ТОП-20)',
+        data=to_xlsx_bytes(top, 'ТОП-20'),
+        file_name='top20_сделок.xlsx',
+        mime=XLSX_MIME,
+        key='dl_top',
+    )
 
 with tab2:
     st.subheader('Угоди, де рахунки виставлені в різні місяці')
@@ -161,6 +164,13 @@ with tab2:
     m2.metric('Рядків (рахунків)', len(df_diff))
 
     st.dataframe(df_diff, use_container_width=True, height=600)
+    st.download_button(
+        '⬇️ Завантажити XLSX (різні місяці)',
+        data=to_xlsx_bytes(df_diff, 'Різні місяці'),
+        file_name='угоди_різні_місяці.xlsx',
+        mime=XLSX_MIME,
+        key='dl_diff',
+    )
 
     # збережемо для tab3
     st.session_state['df_diff'] = df_diff
@@ -190,3 +200,10 @@ with tab3:
 
     st.metric('Кількість угод з 2026-01-01', len(сделки_2026))
     st.dataframe(сделки_2026, use_container_width=True, height=600)
+    st.download_button(
+        '⬇️ Завантажити XLSX (угоди з 2026)',
+        data=to_xlsx_bytes(сделки_2026, 'Угоди 2026'),
+        file_name='угоди_2026.xlsx',
+        mime=XLSX_MIME,
+        key='dl_2026',
+    )
