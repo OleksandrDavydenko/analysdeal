@@ -124,19 +124,37 @@ tab1, tab2, tab3 = st.tabs([
     'Різні місяці в рахунках з 2026 року',
 ])
 
+
+def date_filter(df_src: pd.DataFrame, key_prefix: str) -> pd.DataFrame:
+    """Фільтр по ДатаУгоди — повертає відфільтрований DataFrame."""
+    min_d = df_src['ДатаУгоди'].min().date()
+    max_d = df_src['ДатаУгоди'].max().date()
+    c1, c2 = st.columns(2)
+    d_from = c1.date_input('Дата угоди з', value=min_d,
+                           min_value=min_d, max_value=max_d,
+                           key=f'{key_prefix}_from', format='YYYY-MM-DD')
+    d_to = c2.date_input('Дата угоди по', value=max_d,
+                         min_value=min_d, max_value=max_d,
+                         key=f'{key_prefix}_to', format='YYYY-MM-DD')
+    mask = (df_src['ДатаУгоди'].dt.date >= d_from) & (df_src['ДатаУгоди'].dt.date <= d_to)
+    return df_src.loc[mask]
+
+
 with tab1:
     st.subheader('Повний датасет із result.csv')
-    st.dataframe(df, use_container_width=True, height=600)
+    df_tab1 = date_filter(df, 'tab1')
+    st.caption(f'Рядків після фільтра: {len(df_tab1)} · унікальних угод: {df_tab1["НомерУгоди"].nunique()}')
+    st.dataframe(df_tab1, use_container_width=True, height=600)
     st.download_button(
         '⬇️ Завантажити XLSX (повний датасет)',
-        data=to_xlsx_bytes(df, 'Повний датасет'),
+        data=to_xlsx_bytes(df_tab1, 'Повний датасет'),
         file_name='повний_датасет.xlsx',
         mime=XLSX_MIME,
         key='dl_full',
     )
 
     st.subheader('ТОП-20 угод за кількістю рахунків')
-    top = (df[['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов']]
+    top = (df_tab1[['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов']]
              .drop_duplicates()
              .sort_values('КолвоСчетов', ascending=False)
              .head(20))
@@ -151,14 +169,15 @@ with tab1:
 
 with tab2:
     st.subheader('Угоди, де рахунки виставлені в різні місяці')
+    df_tab2 = date_filter(df, 'tab2')
 
     угоди_разные_месяцы = (
-        df.groupby('НомерУгоди')['МесяцСчета']
+        df_tab2.groupby('НомерУгоди')['МесяцСчета']
           .nunique()
           .loc[lambda s: s > 1]
           .index
     )
-    df_diff = (df[df['НомерУгоди'].isin(угоди_разные_месяцы)]
+    df_diff = (df_tab2[df_tab2['НомерУгоди'].isin(угоди_разные_месяцы)]
                  .sort_values(['НомерУгоди', 'ДатаСчета'])
                  .reset_index(drop=True))
 
