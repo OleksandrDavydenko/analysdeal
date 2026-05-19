@@ -7,10 +7,10 @@ st.set_page_config(page_title='Аналіз сделок', layout='wide')
 
 
 def check_password() -> bool:
-    """Проста авторизація — пароль зі st.secrets['password']."""
+    """Авторизація — пароль зі st.secrets['password']."""
     def password_entered():
-        if hmac.compare_digest(st.session_state.get('password', ''),
-                               st.secrets['password']):
+        if hmac.compare_digest(str(st.session_state.get('password', '')),
+                               str(st.secrets['password'])):
             st.session_state['password_correct'] = True
             del st.session_state['password']
         else:
@@ -19,10 +19,78 @@ def check_password() -> bool:
     if st.session_state.get('password_correct'):
         return True
 
-    st.text_input('Пароль', type='password',
-                  on_change=password_entered, key='password')
-    if st.session_state.get('password_correct') is False:
-        st.error('Невірний пароль')
+    st.markdown(
+        """
+        <style>
+        [data-testid="stHeader"], [data-testid="stToolbar"] { display: none; }
+        .block-container { padding-top: 4rem; max-width: 460px; }
+        .login-card {
+            background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 18px;
+            padding: 2.2rem 2rem 1.6rem;
+            box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+            margin-top: 2rem;
+        }
+        .login-icon {
+            font-size: 2.4rem;
+            text-align: center;
+            margin-bottom: 0.4rem;
+        }
+        .login-title {
+            text-align: center;
+            font-size: 1.45rem;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0;
+        }
+        .login-sub {
+            text-align: center;
+            color: #64748b;
+            font-size: 0.92rem;
+            margin: 0.3rem 0 1.4rem;
+        }
+        .stTextInput > div > div > input {
+            border-radius: 10px !important;
+            padding: 0.65rem 0.9rem !important;
+        }
+        .stButton > button {
+            width: 100%;
+            border-radius: 10px;
+            padding: 0.55rem 0;
+            background: #2563eb;
+            color: white;
+            border: none;
+            font-weight: 600;
+        }
+        .stButton > button:hover { background: #1d4ed8; color: white; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _, mid, _ = st.columns([1, 2, 1])
+    with mid:
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.markdown('<div class="login-icon">🔒</div>', unsafe_allow_html=True)
+        st.markdown('<p class="login-title">Доступ до звіту</p>',
+                    unsafe_allow_html=True)
+        st.markdown('<p class="login-sub">Введіть пароль для перегляду аналізу сделок</p>',
+                    unsafe_allow_html=True)
+
+        with st.form('login_form', clear_on_submit=False):
+            st.text_input('Пароль', type='password',
+                          key='password', label_visibility='collapsed',
+                          placeholder='Пароль')
+            submitted = st.form_submit_button('Увійти')
+            if submitted:
+                password_entered()
+                st.rerun()
+
+        if st.session_state.get('password_correct') is False:
+            st.error('Невірний пароль')
+        st.markdown('</div>', unsafe_allow_html=True)
+
     return False
 
 
