@@ -19,7 +19,7 @@ def to_xlsx_bytes(df: pd.DataFrame, sheet_name: str = 'Sheet1') -> bytes:
 
 XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
-st.set_page_config(page_title='Аналіз сделок', layout='wide')
+st.set_page_config(page_title='Аналіз угод', layout='wide')
 
 
 def check_password() -> bool:
@@ -64,7 +64,7 @@ def check_password() -> bool:
             "<div style='text-align:center; font-size:2.2rem;'>🔒</div>"
             "<h2 style='text-align:center; margin:0 0 0.25rem;'>Доступ до звіту</h2>"
             "<p style='text-align:center; color:#64748b; margin:0 0 1rem;'>"
-            "Введіть пароль для перегляду аналізу сделок</p>",
+            "Введіть пароль для перегляду аналізу угод</p>",
             unsafe_allow_html=True,
         )
 
@@ -86,12 +86,14 @@ def check_password() -> bool:
 if not check_password():
     st.stop()
 
-st.title('Аналіз сделок з кількома рахунками')
+st.title('Аналіз угод з кількома рахунками')
 
 
 @st.cache_data
 def load_data(path: str = 'result.csv') -> pd.DataFrame:
     df = pd.read_csv(path, encoding='utf-8-sig')
+    df = df.rename(columns={'НомерСделки': 'НомерУгоди',
+                            'ДатаСделки': 'ДатаУгоди'})
 
     # 1С зберігає дати зі зсувом +2000 років (4024 → 2024).
     def fix_year(s):
@@ -99,7 +101,7 @@ def load_data(path: str = 'result.csv') -> pd.DataFrame:
             return s
         return f'{int(s[:4]) - 2000:04d}{s[4:]}'
 
-    for col in ['ДатаСделки', 'ДатаСчета']:
+    for col in ['ДатаУгоди', 'ДатаСчета']:
         df[col] = pd.to_datetime(df[col].map(fix_year),
                                  format='%Y-%m-%d %H:%M:%S',
                                  errors='coerce')
@@ -111,14 +113,14 @@ df = load_data()
 
 c1, c2, c3 = st.columns(3)
 c1.metric('Рядків', len(df))
-c2.metric('Унікальних сделок', df['НомерСделки'].nunique())
+c2.metric('Унікальних угод', df['НомерУгоди'].nunique())
 c3.metric('Діапазон дат угод',
-          f"{df['ДатаСделки'].min():%Y-%m-%d} … {df['ДатаСделки'].max():%Y-%m-%d}")
+          f"{df['ДатаУгоди'].min():%Y-%m-%d} … {df['ДатаУгоди'].max():%Y-%m-%d}")
 
 tab1, tab2, tab3 = st.tabs([
-    'Крок 1. Повний датасет',
-    'Крок 2. Різні місяці рахунків',
-    'Крок 3. Угоди з 2026 року',
+    'Повний датасет',
+    'Різні місяці рахунків',
+    'Різні місяці рахунків Угоди з 2026 року',
 ])
 
 with tab1:
@@ -132,8 +134,8 @@ with tab1:
         key='dl_full',
     )
 
-    st.subheader('ТОП-20 сделок за кількістю рахунків')
-    top = (df.groupby(['НомерСделки', 'ДатаСделки', 'КолвоСчетов'], as_index=False)
+    st.subheader('ТОП-20 угод за кількістю рахунків')
+    top = (df.groupby(['НомерУгоди', 'ДатаУгоди', 'КолвоСчетов'], as_index=False)
              .agg(СуммаПоСчетам=('Сумма', 'sum'))
              .sort_values('КолвоСчетов', ascending=False)
              .head(20))
@@ -141,7 +143,7 @@ with tab1:
     st.download_button(
         '⬇️ Завантажити XLSX (ТОП-20)',
         data=to_xlsx_bytes(top, 'ТОП-20'),
-        file_name='top20_сделок.xlsx',
+        file_name='top20_угод.xlsx',
         mime=XLSX_MIME,
         key='dl_top',
     )
@@ -149,18 +151,18 @@ with tab1:
 with tab2:
     st.subheader('Угоди, де рахунки виставлені в різні місяці')
 
-    сделки_разные_месяцы = (
-        df.groupby('НомерСделки')['МесяцСчета']
+    угоди_разные_месяцы = (
+        df.groupby('НомерУгоди')['МесяцСчета']
           .nunique()
           .loc[lambda s: s > 1]
           .index
     )
-    df_diff = (df[df['НомерСделки'].isin(сделки_разные_месяцы)]
-                 .sort_values(['НомерСделки', 'ДатаСчета'])
+    df_diff = (df[df['НомерУгоди'].isin(угоди_разные_месяцы)]
+                 .sort_values(['НомерУгоди', 'ДатаСчета'])
                  .reset_index(drop=True))
 
     m1, m2 = st.columns(2)
-    m1.metric('Угод з різними місяцями', df_diff['НомерСделки'].nunique())
+    m1.metric('Угод з різними місяцями', df_diff['НомерУгоди'].nunique())
     m2.metric('Рядків (рахунків)', len(df_diff))
 
     st.dataframe(df_diff, use_container_width=True, height=600)
@@ -181,28 +183,28 @@ with tab3:
     df_diff = st.session_state.get('df_diff')
     if df_diff is None:
         # на випадок якщо вкладка відкрита першою
-        сделки_разные_месяцы = (
-            df.groupby('НомерСделки')['МесяцСчета']
+        угоди_разные_месяцы = (
+            df.groupby('НомерУгоди')['МесяцСчета']
               .nunique()
               .loc[lambda s: s > 1]
               .index
         )
-        df_diff = df[df['НомерСделки'].isin(сделки_разные_месяцы)]
+        df_diff = df[df['НомерУгоди'].isin(угоди_разные_месяцы)]
 
-    сделки_2026 = (
-        df_diff[df_diff['ДатаСделки'] >= '2026-01-01']
-          .groupby(['НомерСделки', 'ДатаСделки'], as_index=False)
+    угоди_2026 = (
+        df_diff[df_diff['ДатаУгоди'] >= '2026-01-01']
+          .groupby(['НомерУгоди', 'ДатаУгоди'], as_index=False)
           .agg(КолвоСчетов=('НомерСчета', 'count'),
                КолвоМесяцев=('МесяцСчета', 'nunique'),
                СуммаПоСчетам=('Сумма', 'sum'))
-          .sort_values('ДатаСделки')
+          .sort_values('ДатаУгоди')
     )
 
-    st.metric('Кількість угод з 2026-01-01', len(сделки_2026))
-    st.dataframe(сделки_2026, use_container_width=True, height=600)
+    st.metric('Кількість угод з 2026-01-01', len(угоди_2026))
+    st.dataframe(угоди_2026, use_container_width=True, height=600)
     st.download_button(
         '⬇️ Завантажити XLSX (угоди з 2026)',
-        data=to_xlsx_bytes(сделки_2026, 'Угоди 2026'),
+        data=to_xlsx_bytes(угоди_2026, 'Угоди 2026'),
         file_name='угоди_2026.xlsx',
         mime=XLSX_MIME,
         key='dl_2026',
